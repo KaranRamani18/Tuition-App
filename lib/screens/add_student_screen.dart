@@ -13,10 +13,10 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
   final batchController = TextEditingController();
   final mobileController = TextEditingController();
   final feeController = TextEditingController();
-  final StudentService service = StudentService();
 
-  void saveStudent() async {
-    await service.addStudent(
+  void save() async {
+    if (nameController.text.isEmpty) return;
+    await StudentService().addStudent(
       name: nameController.text,
       batch: batchController.text,
       mobile: mobileController.text,
@@ -28,19 +28,32 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Student')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(
+        title: const Text("New Student"),
+        actions: [TextButton(onPressed: save, child: const Text("Done", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)))]
+      ),
+      body: SingleChildScrollView(
         child: Column(
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
-            TextField(controller: batchController, decoration: const InputDecoration(labelText: 'Batch')),
-            TextField(controller: mobileController, decoration: const InputDecoration(labelText: 'Mobile')),
-            TextField(controller: feeController, decoration: const InputDecoration(labelText: 'Monthly Fee')),
             const SizedBox(height: 20),
-            ElevatedButton(onPressed: saveStudent, child: const Text('Save')),
+            _buildAppleInput(nameController, "Name", Icons.person),
+            _buildAppleInput(batchController, "Batch", Icons.class_outlined),
+            _buildAppleInput(mobileController, "Mobile", Icons.phone_iphone),
+            _buildAppleInput(feeController, "Monthly Fee", Icons.currency_rupee),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAppleInput(TextEditingController controller, String label, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(icon: Icon(icon, size: 20, color: Colors.grey), labelText: label, border: InputBorder.none),
       ),
     );
   }

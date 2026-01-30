@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -12,17 +13,15 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
+  // --- YOUR ORIGINAL LOGIC VARIABLES ---
   final AttendanceService service = AttendanceService();
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
   Map<String, dynamic> attendance = {};
-
   late DateTime selectedDate;
   late DateTime today;
-
   bool isHoliday = false;
 
-  // 🔍 SEARCH + FILTER STATE
   String selectedBatch = '';
   String searchText = '';
 
@@ -36,27 +35,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   String get dateKey => DateFormat('yyyy-MM-dd').format(selectedDate);
 
+  // --- YOUR ORIGINAL DATA LOADING ---
   void loadData() async {
     attendance = await service.getAttendance(dateKey);
     await checkHoliday();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
-  // ---------------- HOLIDAY LOGIC ----------------
+  bool get isSunday => selectedDate.weekday == DateTime.sunday; //
 
   Future<void> checkHoliday() async {
-    final doc =
-        await firestore.collection('holidays').doc(dateKey).get();
+    final doc = await firestore.collection('holidays').doc(dateKey).get();
     isHoliday = doc.exists;
   }
 
+  // --- YOUR ORIGINAL HOLIDAY/DATE ACTIONS ---
   Future<void> markHoliday() async {
-    if (!isAttendanceEditable()) return;
-
-    await firestore.collection('holidays').doc(dateKey).set({
-      'isHoliday': true,
-    });
-
+    if (!isAttendanceEditable() || isSunday) return;
+    await firestore.collection('holidays').doc(dateKey).set({'isHoliday': true});
     setState(() {
       isHoliday = true;
       attendance.clear();
@@ -64,241 +60,216 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> removeHoliday() async {
-    if (!isAttendanceEditable()) return;
-
+    if (!isAttendanceEditable() || isSunday) return;
     await firestore.collection('holidays').doc(dateKey).delete();
-
-    setState(() {
-      isHoliday = false;
-    });
-
+    setState(() => isHoliday = false);
     loadData();
   }
 
-  // ---------------- LOCK LOGIC (2 DAYS) ----------------
-
-  DateTime _normalize(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
-  }
+  DateTime _normalize(DateTime date) => DateTime(date.year, date.month, date.day);
 
   bool isAttendanceEditable() {
     final todayDate = _normalize(today);
     final selected = _normalize(selectedDate);
     final difference = todayDate.difference(selected).inDays;
-    return difference >= 0 && difference <= 2;
+    return difference >= 0 && difference <= 2; //
   }
-
-  // ---------------- ATTENDANCE ----------------
 
   void toggleAttendance(String studentId, bool value) async {
-    if (!isAttendanceEditable() || isHoliday) return;
-
+    if (!isAttendanceEditable() || isHoliday || isSunday) return;
     await service.markAttendance(dateKey, studentId, value);
-    setState(() {
-      attendance[studentId] = value;
-    });
+    setState(() => attendance[studentId] = value);
   }
 
-  // ---------------- DATE NAVIGATION ----------------
-
   void goToPreviousDate() {
-    setState(() {
-      selectedDate = selectedDate.subtract(const Duration(days: 1));
-    });
+    setState(() => selectedDate = selectedDate.subtract(const Duration(days: 1)));
     loadData();
   }
 
   void goToNextDate() {
     if (isToday) return;
-
-    setState(() {
-      selectedDate = selectedDate.add(const Duration(days: 1));
-    });
+    setState(() => selectedDate = selectedDate.add(const Duration(days: 1)));
     loadData();
   }
 
-  bool get isToday {
-    return DateFormat('yyyy-MM-dd').format(selectedDate) ==
-        DateFormat('yyyy-MM-dd').format(today);
-  }
+  bool get isToday => DateFormat('yyyy-MM-dd').format(selectedDate) == DateFormat('yyyy-MM-dd').format(today);
 
-  // ---------------- UI ----------------
-
+  // --- "WORLD'S BEST" DESIGN IMPLEMENTATION ---
   @override
   Widget build(BuildContext context) {
     final editable = isAttendanceEditable();
+    final noClassDay = isSunday || isHoliday;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Attendance'),
+        title: const Text('Attendance', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+        backgroundColor: Colors.transparent,
+        flexibleSpace: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(color: Colors.white.withOpacity(0.2)),
+          ),
+        ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // DATE + HOLIDAY SECTION (UNCHANGED)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+          // Background Gradient
+          Container(color: const Color(0xFFF2F2F7)),
+          
+          SafeArea(
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: goToPreviousDate,
-                    ),
-                    Text(
-                      dateKey,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: isToday ? null : goToNextDate,
-                    ),
-                  ],
+                _buildGlassDateHeader(editable),
+                _buildGlassFilters(noClassDay),
+                Expanded(
+                  child: noClassDay 
+                    ? _buildGlassNoClassState() 
+                    : _buildStudentList(editable),
                 ),
-
-                if (!editable)
-                  const Text(
-                    'Attendance is locked for this date',
-                    style: TextStyle(color: Colors.red),
-                  ),
-
-                if (isHoliday)
-                  const Text(
-                    'Holiday / No Class',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                if (editable)
-                  TextButton(
-                    onPressed:
-                        isHoliday ? removeHoliday : markHoliday,
-                    child: Text(
-                      isHoliday
-                          ? 'Remove Holiday'
-                          : 'Mark as Holiday',
-                    ),
-                  ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          // 🔽 CLASS / BATCH FILTER
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: StreamBuilder<QuerySnapshot>(
-              stream: StudentService().getStudents(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const SizedBox();
-
-                final batches = snapshot.data!.docs
-                    .map((e) => e['batch'] as String)
-                    .toSet()
-                    .toList();
-
-                return DropdownButtonFormField<String>(
-                  value: selectedBatch.isEmpty
-                      ? null
-                      : selectedBatch,
-                  hint: const Text('Select Class / Batch'),
-                  items: batches.map((batch) {
-                    return DropdownMenuItem(
-                      value: batch,
-                      child: Text(batch),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedBatch = value!;
-                      searchText = '';
-                    });
-                  },
-                );
-              },
-            ),
-          ),
-
-          // 🔍 SEARCH BAR
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              enabled: selectedBatch.isNotEmpty,
-              decoration: InputDecoration(
-                hintText: selectedBatch.isEmpty
-                    ? 'Select class first'
-                    : 'Search student name',
-                prefixIcon: const Icon(Icons.search),
+  Widget _buildGlassDateHeader(bool editable) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton.filledTonal(onPressed: goToPreviousDate, icon: const Icon(Icons.arrow_back_ios_new, size: 16)),
+              Column(
+                children: [
+                  Text(DateFormat('EEEE').format(selectedDate), style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  Text(dateKey, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
               ),
-              onChanged: (value) {
-                setState(() {
-                  searchText = value.toLowerCase();
-                });
-              },
+              IconButton.filledTonal(onPressed: isToday ? null : goToNextDate, icon: const Icon(Icons.arrow_forward_ios, size: 16)),
+            ],
+          ),
+          if (!editable) const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('🔒 Locked (2-day limit)', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+          if (editable && !isSunday)
+            TextButton.icon(
+              onPressed: isHoliday ? removeHoliday : markHoliday,
+              icon: Icon(isHoliday ? Icons.edit_calendar : Icons.beach_access, size: 18),
+              label: Text(isHoliday ? 'Remove Holiday' : 'Mark as Holiday'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlassFilters(bool noClassDay) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          // YOUR ORIGINAL BATCH DROPDOWN LOGIC
+          StreamBuilder<QuerySnapshot>(
+            stream: StudentService().getStudents(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox();
+              final batches = snapshot.data!.docs.map((e) => e['batch'] as String).toSet().toList();
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(16)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    hint: const Text("Select Batch"),
+                    value: selectedBatch.isEmpty ? null : selectedBatch,
+                    items: batches.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                    onChanged: (v) => setState(() { selectedBatch = v!; searchText = ''; }),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // YOUR ORIGINAL SEARCH LOGIC
+          TextField(
+            enabled: selectedBatch.isNotEmpty && !noClassDay,
+            onChanged: (v) => setState(() => searchText = v.toLowerCase()),
+            decoration: InputDecoration(
+              hintText: "Search students...",
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          // STUDENT LIST (FILTERED)
-          Expanded(
-            child: isHoliday
-                ? const Center(
-                    child: Text(
-                      'No attendance required for this day',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  )
-                : StreamBuilder<QuerySnapshot>(
-                    stream: StudentService().getStudents(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
+  Widget _buildStudentList(bool editable) {
+    if (selectedBatch.isEmpty) return const Center(child: Text("Select a batch to start"));
 
-                      final students =
-                          snapshot.data!.docs.where((student) {
-                        if (selectedBatch.isEmpty) return false;
+    return StreamBuilder<QuerySnapshot>(
+      stream: StudentService().getStudents(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        // YOUR ORIGINAL FILTERING LOGIC
+        final students = snapshot.data!.docs.where((s) {
+          final matchesBatch = s['batch'] == selectedBatch;
+          final matchesSearch = searchText.isEmpty || s['name'].toString().toLowerCase().contains(searchText);
+          return matchesBatch && matchesSearch;
+        }).toList();
 
-                        final name = student['name']
-                            .toString()
-                            .toLowerCase();
-                        final batch =
-                            student['batch'].toString();
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: students.length,
+          itemBuilder: (context, index) {
+            final s = students[index];
+            final present = attendance[s.id] ?? false;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+              ),
+              child: ListTile(
+                title: Text(s['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text("ID: ${s.id.substring(0,5)}"),
+                trailing: Switch.adaptive(
+                  value: present,
+                  activeColor: const Color(0xFF34C759),
+                  onChanged: editable ? (v) => toggleAttendance(s.id, v) : null,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-                        final matchesBatch =
-                            batch == selectedBatch;
-                        final matchesSearch = searchText.isEmpty ||
-                            name.contains(searchText);
-
-                        return matchesBatch && matchesSearch;
-                      }).toList();
-
-                      return ListView(
-                        children: students.map((student) {
-                          final present =
-                              attendance[student.id] ?? false;
-
-                          return SwitchListTile(
-                            title: Text(student['name']),
-                            subtitle: Text(student['batch']),
-                            value: present,
-                            onChanged: editable
-                                ? (value) => toggleAttendance(
-                                    student.id, value)
-                                : null,
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-          ),
+  Widget _buildGlassNoClassState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(isSunday ? Icons.weekend : Icons.celebration, size: 80, color: Colors.blueGrey.withOpacity(0.2)),
+          const SizedBox(height: 16),
+          Text(isSunday ? "Sunday - Rest Day" : "Holiday Declared", style: const TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
