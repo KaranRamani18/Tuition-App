@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "372029396322",
+    "project_id": "tuition-app-dc470",
+    "storage_bucket": "tuition-app-dc470.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:372029396322:android:59f2db3bd6d9089caa883b",
+        "android_client_info": {
+          "package_name": "com.example.classes_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7PwPByRraMIkVX3RMt-Vz9xFKgrOhIWI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
